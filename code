@@ -1,0 +1,88 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "RTClib.h"
+#include <SD.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+RTC_DS1307 rtc;
+const int chipSelect = 10; // for the data logging shield, use digital pin 10 for the SD cs line
+File myfile; // the logging file
+const int lightSensorPin = A0; // Analog pin for the light sensor
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  Serial.begin(9600);
+
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+
+  if (!rtc.isrunning()) {
+    Serial.println("RTC lost power, lets set the time!");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+  
+  initSDcard();
+  createFile();
+}
+
+void loop() {
+  int lightValue = analogRead(lightSensorPin); // Read light sensor value
+  data_log(lightValue); // Log light sensor data
+
+  // Other code for LCD display or additional functionality can be added here
+}
+
+void initSDcard() {
+  Serial.print("Initializing SD card...");
+  pinMode(10, OUTPUT);
+
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Card failed, or not present");
+    return;
+  }
+  Serial.println("card initialized.");
+}
+
+void createFile() {
+  char filename[] = "light_data.CSV";
+  for (uint8_t i = 0; i < 100; i++) {
+    filename[10] = i / 10 + '0';
+    filename[11] = i % 10 + '0';
+    if (!SD.exists(filename)) {
+      myfile = SD.open(filename, FILE_WRITE);
+      break;
+    }
+  }
+  Serial.print("Logging to: ");
+  Serial.println(filename);
+}
+
+void data_log(int lightValue) {
+  DateTime now = rtc.now();
+  delay(1000); // Adjust delay as needed
+
+  if ((millis() - syncTime) >= SYNC_INTERVAL) {
+    syncTime = millis();
+    myfile.print(now.unixtime());
+    myfile.print(", ");
+    myfile.print(now.day(), DEC);
+    myfile.print("/");
+    myfile.print(now.month(), DEC);
+    myfile.print("/");
+    myfile.print(now.year(), DEC);
+    myfile.print(" ");
+    myfile.print(now.hour(), DEC);
+    myfile.print(":");
+    myfile.print(now.minute(), DEC);
+    myfile.print(":");
+    myfile.print(now.second(), DEC);
+    myfile.print(", ");
+    myfile.print("Light Value: ");
+    myfile.print(lightValue);
+    myfile.println();
+    myfile.flush();
+  }
+}
